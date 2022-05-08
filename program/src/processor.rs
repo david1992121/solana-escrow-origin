@@ -164,6 +164,9 @@ impl Processor {
         )?;
 
         let pda_account = next_account_info(account_info_iter)?;
+        if *pda_account.key != pda {
+            return Err(ProgramError::InvalidAccountData);
+        }
 
         let transfer_to_taker_ix = spl_token::instruction::transfer(
             token_program.key,
