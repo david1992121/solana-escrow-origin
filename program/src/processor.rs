@@ -1,12 +1,12 @@
+use ::borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
     program::{invoke, invoke_signed},
     program_error::ProgramError,
-    program_pack::{IsInitialized, Pack},
     pubkey::Pubkey,
-    sysvar::{rent::Rent, Sysvar},
+    sysvar::{rent::Rent, Sysvar}, program_pack::Pack,
 };
 
 use spl_token::state::Account as TokenAccount;
@@ -60,8 +60,8 @@ impl Processor {
             return Err(EscrowError::NotRentExempt.into());
         }
 
-        let mut escrow_info = Escrow::unpack_unchecked(&escrow_account.try_borrow_data()?)?;
-        if escrow_info.is_initialized() {
+        let mut escrow_info = Escrow::try_from_slice(&escrow_account.try_borrow_data()?)?;
+        if escrow_info.is_initialized {
             return Err(ProgramError::AccountAlreadyInitialized);
         }
 
@@ -71,7 +71,8 @@ impl Processor {
         escrow_info.initializer_token_to_receive_account_pubkey = *token_to_receive_account.key;
         escrow_info.expected_amount = amount;
 
-        Escrow::pack(escrow_info, &mut escrow_account.try_borrow_mut_data()?)?;
+        escrow_info.serialize(&mut *escrow_account.data.borrow_mut())?;
+
         let (pda, _nonce) = Pubkey::find_program_address(&[b"escrow"], program_id);
 
         let token_program = next_account_info(account_info_iter)?;
@@ -126,7 +127,10 @@ impl Processor {
         let initializers_token_to_receive_account = next_account_info(account_info_iter)?;
         let escrow_account = next_account_info(account_info_iter)?;
 
-        let escrow_info = Escrow::unpack(&escrow_account.try_borrow_data()?)?;
+        let escrow_info = Escrow::try_from_slice(&escrow_account.try_borrow_data()?)?;
+        if !escrow_info.is_initialized {
+            return Err(ProgramError::UninitializedAccount);
+        }
 
         if escrow_info.temp_token_account_pubkey != *pdas_temp_token_account.key {
             return Err(ProgramError::InvalidAccountData);
